@@ -48,6 +48,22 @@ namespace EmployeeManagement.Api.Infrastructure.Repositories
             await _context.SaveChangesAsync();
         }
 
+        public async Task<HashSet<string>> GetAllEmails()
+        {
+            var emails = await _context.Employees
+                .Select(e => e.Email)
+                .ToListAsync();
+            
+            return new HashSet<string>(emails);
+        }
+
+
+        public async Task AddEmployeesRange(List<Employee> employees)
+        {
+            _context.Employees.AddRange(employees);
+            await _context.SaveChangesAsync();
+        }
+
         public async Task UpdateEmployee(Employee employee)
         {
             _context.Employees.Update(employee);

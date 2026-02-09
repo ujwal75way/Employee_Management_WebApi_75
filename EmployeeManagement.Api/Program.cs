@@ -3,6 +3,7 @@ using EmployeeManagement.Api.Application.Interfaces;
 using EmployeeManagement.Api.Application.Services;
 using EmployeeManagement.Api.Infrastructure.Data;
 using EmployeeManagement.Api.Infrastructure.Repositories;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);

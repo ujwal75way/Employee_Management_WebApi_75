@@ -17,6 +17,7 @@ namespace EmployeeManagement.Api.Controllers
 
         [HttpGet]
         public async Task<IActionResult> GetEmployees(
+        // Sir, we cannot use string.Empty here because default parameter values must be compile time constants, string.Empty is a static readonly field whose value is assigned at runtime, whereas "" is a string literal, and string literals are compile time constants
             [FromQuery] string department = "",
             [FromQuery] string status = "",
             [FromQuery] string search = "")
@@ -28,7 +29,7 @@ namespace EmployeeManagement.Api.Controllers
             }
             catch (Exception ex)
             {
-                return BadRequest(ex.Message);
+                return BadRequest(new { message = ex.Message });
             }
         }
 
@@ -38,14 +39,11 @@ namespace EmployeeManagement.Api.Controllers
             try
             {
                 var employee = await _employeeService.GetById(id);
-                if (employee == null)
-                    return BadRequest("Employee not found");
-
                 return Ok(employee);
             }
             catch (Exception ex)
             {
-                return BadRequest(ex.Message);
+                return BadRequest(new { message = ex.Message });
             }
         }
 
@@ -59,7 +57,7 @@ namespace EmployeeManagement.Api.Controllers
             }
             catch (Exception ex)
             {
-                return BadRequest(ex.Message);
+                return BadRequest(new { message = ex.Message });
             }
         }
 
@@ -73,7 +71,7 @@ namespace EmployeeManagement.Api.Controllers
             }
             catch (Exception ex)
             {
-                return BadRequest(ex.Message);
+                return BadRequest(new { message = ex.Message });
             }
         }
 
@@ -87,7 +85,7 @@ namespace EmployeeManagement.Api.Controllers
             }
             catch (Exception ex)
             {
-                return BadRequest(ex.Message);
+                return BadRequest(new { message = ex.Message });
             }
         }
 
@@ -101,7 +99,7 @@ namespace EmployeeManagement.Api.Controllers
             }
             catch (Exception ex)
             {
-                return BadRequest(ex.Message);
+                return BadRequest(new { message = ex.Message });
             }
         }
 
@@ -119,26 +117,19 @@ namespace EmployeeManagement.Api.Controllers
             }
         }
 
-        // POST: api/employees/upload-excel
+
         [HttpPost("upload-excel")]
         public async Task<IActionResult> UploadExcel(IFormFile file)
         {
-            if (file == null || file.Length == 0)
-                return BadRequest(new { message = "Please upload a valid Excel file" });
-
-            var extension = Path.GetExtension(file.FileName).ToLower();
-            if (extension != ".xlsx")
-                return BadRequest(new { message = "Invalid file type. Please upload an .xlsx file" });
-
             try
             {
                 using var stream = file.OpenReadStream();
-                var count = await _employeeService.UploadEmployeesFromExcel(stream);
-                return Ok(new { message = $"Successfully processed {count} records" });
+                var result = await _employeeService.UploadEmployeesFromExcel(stream, file.FileName);
+                return Ok(result);
             }
             catch (Exception ex)
             {
-                return BadRequest(new { message = $"Error processing Excel file: {ex.Message}" });
+                return BadRequest(new { message = ex.Message });
             }
         }
     }

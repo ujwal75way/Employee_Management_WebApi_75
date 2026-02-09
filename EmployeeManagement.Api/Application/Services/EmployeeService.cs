@@ -1,3 +1,4 @@
+using EmployeeManagement.Api.Application.Common;
 using EmployeeManagement.Api.Application.DTO;
 using EmployeeManagement.Api.Application.Interfaces;
 using EmployeeManagement.Api.Domain.Entities;
@@ -22,31 +23,74 @@ namespace EmployeeManagement.Api.Application.Services
                 Name = employee.Name,
                 Department = employee.Department,
                 Email = employee.Email,
-                IsActive = employee.IsActive
+                IsActive = employee.IsActive,
+                IsDeleted = employee.IsDeleted
             };
         }
+
+        private static Employee MapToEntity(CreateEmployeeDto dto)
+        {
+            return new Employee
+            {
+                Name = dto.Name,
+                Department = dto.Department,
+                Email = dto.Email,
+                IsActive = dto.IsActive,
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = "Admin",
+                UpdatedAt = DateTime.UtcNow,
+                UpdatedBy = "Admin"
+            };
+        }
+
+        private static void UpdateEntityFromDto(Employee employee, UpdateEmployeeDto dto)
+        {
+            employee.Name = dto.Name;
+            employee.Department = dto.Department;
+            employee.Email = dto.Email;
+            employee.IsActive = dto.IsActive;
+            employee.UpdatedAt = DateTime.UtcNow;
+            employee.UpdatedBy = "Admin";
+        }
+        
+
 
         public async Task<List<EmployeeDto>> GetEmployees(string department, string status, string search)
         {
             var employees = await _repository.GetAllEmployee();
-            var query = employees.AsQueryable();
+            var query = employees.AsEnumerable();
 
-            if (!string.IsNullOrWhiteSpace(department))
+            if (!string.IsNullOrWhiteSpace(department)){
                 query = query.Where(e => e.Department == department);
+            }
 
-            if (!string.IsNullOrWhiteSpace(status))
+            if (!string.IsNullOrWhiteSpace(status)){
                 query = query.Where(e => e.IsActive == (status == "Active"));
+            }
 
-            if (!string.IsNullOrWhiteSpace(search))
+            if (!string.IsNullOrWhiteSpace(search)){
                 query = query.Where(e => e.Name.Contains(search));
+            }
 
-            return query.Select(MapToDto).ToList();
+            var result = query.Select(MapToDto).ToList();
+
+            if (!result.Any())
+            {
+                throw new Exception("Employee does not exist");
+            }
+            return result;
         }
 
-        public async Task<EmployeeDto?> GetById(int id)
+        public async Task<EmployeeDto> GetById(int id)
         {
             var employee = await _repository.GetByIdEmployee(id);
-            return employee == null ? null : MapToDto(employee);
+
+            if (employee == null)
+            {
+                throw new Exception("Employee not found");
+            }
+
+            return MapToDto(employee);
         }
 
         public async Task<List<string>> GetAllDepartments()
@@ -57,8 +101,9 @@ namespace EmployeeManagement.Api.Application.Services
         public async Task<List<DepartmentCountDto>> GetDepartmentCounts()
         {
             var employees = await _repository.GetAllEmployee();
+            var query = employees.AsEnumerable();
 
-            return employees
+            return query
                 .Where(e => !e.IsDeleted)
                 .GroupBy(e => e.Department)
                 .Select(g => new DepartmentCountDto
@@ -71,40 +116,50 @@ namespace EmployeeManagement.Api.Application.Services
 
         public async Task CreateEmployee(CreateEmployeeDto val)
         {
-            if (string.IsNullOrWhiteSpace(val.Name) ||
-                string.IsNullOrWhiteSpace(val.Email) ||
-                string.IsNullOrWhiteSpace(val.Department))
-            {
-                throw new Exception("Invalid employee data");
+            if (string.IsNullOrWhiteSpace(val.Name)){
+                throw new Exception("Name is required");
+            }   
+
+            if (string.IsNullOrWhiteSpace(val.Email) || !ValidationHelper.IsValidEmail(val.Email)){
+                throw new Exception("A valid email is required");
             }
 
-            var exists = await _repository.GetByEmail(val.Email);
-            if (exists != null)
+            if (string.IsNullOrWhiteSpace(val.Department)){
+                throw new Exception("Department is required");
+            }
+
+            var userExists = await _repository.GetByEmail(val.Email);
+
+            if (userExists != null)
             {
                 throw new Exception("Email already exists");
             }
 
-            var employee = new Employee
-            {
-                Name = val.Name,
-                Department = val.Department,
-                Email = val.Email,
-                IsActive = val.IsActive,
-                CreatedAt = DateTime.UtcNow,
-                CreatedBy = "Admin",
-                UpdatedAt = DateTime.UtcNow,
-                UpdatedBy = "Admin"
-            };
+            var employee = MapToEntity(val);
 
             await _repository.AddEmployee(employee);
         }
 
+
         public async Task<bool> UpdateEmployee(UpdateEmployeeDto val)
         {
             var employee = await _repository.GetByIdEmployee(val.Id);
+
             if (employee == null)
             {
                 throw new Exception("Employee not found");
+            }
+
+            if (string.IsNullOrWhiteSpace(val.Name)){
+                throw new Exception("Name is required");
+            }
+
+            if (string.IsNullOrWhiteSpace(val.Email) || !ValidationHelper.IsValidEmail(val.Email)){
+                throw new Exception("A valid email is required");
+            }
+
+            if (string.IsNullOrWhiteSpace(val.Department)){
+                throw new Exception("Department is required");
             }
 
             if (employee.Email != val.Email)
@@ -116,12 +171,7 @@ namespace EmployeeManagement.Api.Application.Services
                 }
             }
 
-            employee.Name = val.Name;
-            employee.Department = val.Department;
-            employee.Email = val.Email;
-            employee.IsActive = val.IsActive;
-            employee.UpdatedAt = DateTime.UtcNow;
-            employee.UpdatedBy = "Admin";
+            UpdateEntityFromDto(employee, val);
 
             await _repository.UpdateEmployee(employee);
             return true;
@@ -130,6 +180,7 @@ namespace EmployeeManagement.Api.Application.Services
         public async Task<bool> DeleteEmployee(int id)
         {
             var employee = await _repository.GetByIdEmployee(id);
+
             if (employee == null)
             {
                 throw new Exception("Employee not found");
@@ -139,44 +190,120 @@ namespace EmployeeManagement.Api.Application.Services
             return true;
         }
 
-        public async Task<int> UploadEmployeesFromExcel(Stream excelStream)
+
+        public async Task<UploadResult> UploadEmployeesFromExcel(Stream excelStream, string fileName)
         {
+            if (excelStream == null || excelStream.Length == 0){
+                throw new Exception("Please upload a valid Excel file");
+            }
+
+            var extension = Path.GetExtension(fileName).ToLower();
+            if (extension != ".xlsx"){
+                throw new Exception("Invalid file type. Please upload an .xlsx file");
+            }
+
             ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
             using var package = new ExcelPackage(excelStream);
-            var worksheet = package.Workbook.Worksheets[0];
-            var rowCount = worksheet.Dimension.Rows;
-            var processedCount = 0;
 
+            var existingEmails = new HashSet<string>(
+                await _repository.GetAllEmails(),
+                StringComparer.OrdinalIgnoreCase
+            );  
+            var result = new UploadResult();
+            var employeeBatch = new List<Employee>();
+            const int BATCH_SIZE = 100;
+            
+            var worksheet = package.Workbook.Worksheets.FirstOrDefault();
+            if (worksheet == null){
+                throw new Exception("Excel file has no worksheets");
+            }
+
+            var rowCount = worksheet.Dimension.Rows;
+            var columnCount = worksheet.Dimension.Columns;
+            
+            var columnMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            for (int col = 1; col <= columnCount; col++)
+            {
+                var header = worksheet.Cells[1, col].Value?.ToString()?.Trim();
+                if (!string.IsNullOrWhiteSpace(header))
+                {
+                    columnMap[header.ToLower()] = col;
+                }
+            }
+            
+            string[] requiredHeaders = { "name", "department", "email", "isactive" };
+
+            foreach (var header in requiredHeaders)
+            {
+                if (!columnMap.ContainsKey(header))
+                {
+                    throw new Exception($"Missing required column: {header}");
+                }
+            }
+            
             for (int row = 2; row <= rowCount; row++)
             {
-                var name = worksheet.Cells[row, 1].Value?.ToString();
-                var department = worksheet.Cells[row, 2].Value?.ToString();
-                var email = worksheet.Cells[row, 3].Value?.ToString();
-                var isActiveStr = worksheet.Cells[row, 4].Value?.ToString();
+                var name = worksheet.Cells[row, columnMap["name"]].Value?.ToString()?.Trim();
+                var department = worksheet.Cells[row, columnMap["department"]].Value?.ToString()?.Trim();
+                var email = worksheet.Cells[row, columnMap["email"]].Value?.ToString()?.Trim();
+                var isActiveStr = worksheet.Cells[row, columnMap["isactive"]].Value?.ToString()?.Trim();
+                
+                if (string.IsNullOrWhiteSpace(name))
+                {
+                    result.Errors.Add($"Row {row}: Name is required.");
+                    continue;
+                }
 
-                if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(email) ||
-                    string.IsNullOrWhiteSpace(department)) continue;
+                if (string.IsNullOrWhiteSpace(department))
+                {
+                    result.Errors.Add($"Row {row}: Department is required.");
+                    continue;
+                }
 
-                var existingEmployee = await _repository.GetByEmail(email);
-                if (existingEmployee != null) continue;
+                if (string.IsNullOrWhiteSpace(email))
+                {
+                    result.Errors.Add($"Row {row}: Email is required.");
+                    continue;
+                }
 
-                var employee = new Employee
+                if (!ValidationHelper.IsValidEmail(email))
+                {
+                    result.Errors.Add($"Row {row}: '{email}' is not a valid email address.");
+                    continue;
+                }
+                
+                if (existingEmails.Contains(email))
+                {
+                    result.Errors.Add($"Row {row}: Email '{email}' already exists or is duplicated in the file.");
+                    continue;
+                }
+
+                existingEmails.Add(email);
+
+                var employee = MapToEntity(new CreateEmployeeDto
                 {
                     Name = name,
                     Department = department,
                     Email = email,
-                    IsActive = bool.TryParse(isActiveStr, out var isActive) && isActive,
-                    CreatedAt = DateTime.UtcNow,
-                    CreatedBy = "Admin",
-                    UpdatedAt = DateTime.UtcNow,
-                    UpdatedBy = "Admin"
-                };
+                    IsActive = bool.TryParse(isActiveStr, out var isActive) && isActive
+                });
 
-                await _repository.AddEmployee(employee);
-                processedCount++;
+                employeeBatch.Add(employee);
+                result.SuccessCount++;
+
+                if (employeeBatch.Count >= BATCH_SIZE)
+                {
+                    await _repository.AddEmployeesRange(employeeBatch);
+                    employeeBatch.Clear();
+                }
             }
 
-            return processedCount;
+            if (employeeBatch.Any())
+            {
+                await _repository.AddEmployeesRange(employeeBatch);
+            }
+
+            return result;
         }
 
     }

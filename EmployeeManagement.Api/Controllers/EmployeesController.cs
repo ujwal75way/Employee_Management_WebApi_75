@@ -16,15 +16,11 @@ namespace EmployeeManagement.Api.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetEmployees(
-        // Sir, we cannot use string.Empty here because default parameter values must be compile time constants, string.Empty is a static readonly field whose value is assigned at runtime, whereas "" is a string literal, and string literals are compile time constants
-            [FromQuery] string department = "",
-            [FromQuery] string status = "",
-            [FromQuery] string search = "")
+        public async Task<IActionResult> GetEmployees([FromQuery] EmployeeFilterDto filter)
         {
             try
             {
-                var employees = await _employeeService.GetEmployees(department, status, search);
+                var employees = await _employeeService.GetEmployees(filter.Department, filter.Status, filter.Search);
                 return Ok(employees);
             }
             catch (Exception ex)

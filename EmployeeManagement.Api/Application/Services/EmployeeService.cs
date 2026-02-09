@@ -61,15 +61,16 @@ namespace EmployeeManagement.Api.Application.Services
             var query = employees.AsEnumerable();
 
             if (!string.IsNullOrWhiteSpace(department)){
-                query = query.Where(e => e.Department == department);
+                query = query.Where(e => e.Department.Equals(department, StringComparison.OrdinalIgnoreCase));
             }
 
             if (!string.IsNullOrWhiteSpace(status)){
-                query = query.Where(e => e.IsActive == (status == "Active"));
+                var active = status.Equals("Active", StringComparison.OrdinalIgnoreCase);
+                query = query.Where(e => e.IsActive == active);
             }
 
             if (!string.IsNullOrWhiteSpace(search)){
-                query = query.Where(e => e.Name.Contains(search));
+                query = query.Where(e => e.Name.Contains(search, StringComparison.OrdinalIgnoreCase));
             }
 
             var result = query.Select(MapToDto).ToList();
@@ -119,11 +120,9 @@ namespace EmployeeManagement.Api.Application.Services
             if (string.IsNullOrWhiteSpace(val.Name)){
                 throw new Exception("Name is required");
             }   
-
             if (string.IsNullOrWhiteSpace(val.Email) || !ValidationHelper.IsValidEmail(val.Email)){
-                throw new Exception("A valid email is required");
+                throw new Exception("Email is required");
             }
-
             if (string.IsNullOrWhiteSpace(val.Department)){
                 throw new Exception("Department is required");
             }
@@ -149,19 +148,15 @@ namespace EmployeeManagement.Api.Application.Services
             {
                 throw new Exception("Employee not found");
             }
-
             if (string.IsNullOrWhiteSpace(val.Name)){
                 throw new Exception("Name is required");
             }
-
             if (string.IsNullOrWhiteSpace(val.Email) || !ValidationHelper.IsValidEmail(val.Email)){
                 throw new Exception("A valid email is required");
             }
-
             if (string.IsNullOrWhiteSpace(val.Department)){
                 throw new Exception("Department is required");
             }
-
             if (employee.Email != val.Email)
             {
                 var emailUsed = await _repository.GetByEmail(val.Email);
